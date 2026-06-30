@@ -23,6 +23,9 @@ dp = Dispatcher(storage=MemoryStorage())
 
 DOWN_PERCENTS = [25, 30, 40, 50]
 
+# Route table definition for Web App endpoints
+routes = web.RouteTableDef()
+
 
 # ============================================================
 # MUDDAT (OY) JADVALLARI - har bank, har model uchun
@@ -66,9 +69,6 @@ def inf_months_captiva(percent, position=None):
 # ============================================================
 # AVTOMOBIL KATALOGI
 # ============================================================
-# Har bir model: positions (yoki price, agar pozitsiyasiz),
-# banks: {"Kapitalbank": months_fn yoki None, "Infinbank": months_fn yoki None}
-# "mode": "bank_choice" - bank tanlanadi, "credit_manual" - Cobalt kabi qo'lda
 
 CARS = {
     "TRACKER-2": {
@@ -298,9 +298,23 @@ class Flow(StatesGroup):
 @dp.message(CommandStart())
 async def start_handler(message: types.Message, state: FSMContext):
     await state.clear()
+    
+    # URL pointing to this hosted Web App with safe tracking context
+    web_app_url = f"{WEBHOOK_HOST}/?chat_id={message.chat.id}"
+    
+    rows = [
+        [types.InlineKeyboardButton(text="🚀 Kalkulyatorni ochish (Web App)", web_app=types.WebAppInfo(url=web_app_url))]
+    ]
+    for model in CARS:
+        rows.append([types.InlineKeyboardButton(text=model, callback_data=f"car_model:{model}")])
+    rows.append([types.InlineKeyboardButton(text="✏️ Qo'lda kiritish", callback_data="manual_start")])
+    
+    keyboard = types.InlineKeyboardMarkup(inline_keyboard=rows)
     await message.answer(
-        "Salom! Avtomobil tanlang yoki qo'lda kiritish variantidan foydalaning:",
-        reply_markup=build_main_menu_kb(),
+        "Salom! Avtokredit va rasrochka hisoblagichidan foydalanish uchun "
+        "quyidagi qulay **Web App** tugmasini bosing yoki botning o'zida davom eting:",
+        reply_markup=keyboard,
+        parse_mode="Markdown"
     )
 
 
@@ -326,7 +340,6 @@ async def model_selected(callback: types.CallbackQuery, state: FSMContext):
     else:
         banks = info["banks"]
         if len(banks) == 1:
-            # Faqat bitta bank mavjud (masalan Captiva -> Infinbank) - avtomatik tanlanadi
             bank = list(banks.keys())[0]
             await proceed_after_bank(callback, state, model, bank)
         else:
@@ -430,8 +443,12 @@ async def percent_selected(callback: types.CallbackQuery, state: FSMContext):
         f"✅ Boshlang'ich to'lov: {percent}% ({down_payment:,.0f} so'm)\n📅 Muddat: {months} oy"
     )
     await callback.answer()
-    await callback.message.answer("🛡 Sug'urta necha foiz? (faqat raqam kiriting, masalan: 0.7)")
-    await state.set_state(Flow.insurance)
+    
+    if bank == "Infinbank":
+        await show_simple_result(callback.message, state)
+    else:
+        await callback.message.answer("🛡 Sug'urta necha foiz? (faqat raqam kiriting, masalan: 0.7)")
+        await state.set_state(Flow.insurance)
 
 
 @dp.callback_query(F.data == "manual_start")
@@ -566,7 +583,7 @@ async def show_simple_result(message_obj, state: FSMContext):
     months = data["months"]
 
     monthly_payment = loan_amount / months
-    final_total = down_payment + loan_amount  # foizsiz, xarajatlarsiz
+    final_total = down_payment + loan_amount
 
     await state.update_data(
         final_monthly_payment=monthly_payment,
@@ -601,7 +618,7 @@ async def show_simple_result(message_obj, state: FSMContext):
 
 
 # ============================================================
-# UMUMIY: SUG'URTA, KOMISSIYA, YAKUNIY HISOB-KITOB (Kapitalbank, Cobalt, Qo'lda)
+# UMUMIY: SUG'URTA, KOMISSIYA, YAKUNIY HISOB-KITOB
 # ============================================================
 
 @dp.message(Flow.insurance)
@@ -725,7 +742,264 @@ async def show_schedule_img(callback: types.CallbackQuery, state: FSMContext):
 
 
 # ============================================================
-# WEBHOOK SOZLAMASI
+# WEB APP API ENDPOINTS
+# ============================================================
+
+@routes.get('/')
+async def serve_index(request):
+    return web.FileResponse('/storage/emulated/0/Download/static/index.html')
+
+
+@routes.get('/api/cars-config')
+async def get_cars_config(request):
+    # Prepare serializable version of catalog mapping
+    serialized = {}
+    for car, config in CARS.items():
+        serialized[car] = {}
+        if "price" in config:
+            serialized[car]["price"] = config["price"]
+        if "positions" in config:
+            serialized[car]["positions"] = config["positions"]
+        if "mode" in config:
+            serialized[car]["mode"] = config["mode"]
+        if "banks" in config:
+            serialized[car]["banks"] = {bank: True for bank in config["banks"]}
+    return web.json_response(serialized)
+
+
+@routes.post('/api/calculate')
+async def api_calculate(request):
+    try:
+        data = await request.json()
+        model = data["model"]
+        position = data.get("position")
+        bank = data.get("bank")
+        price = float(data["price"])
+        down_payment_text = data["down_payment_text"]
+        insurance_percent = float(data.get("insurance_percent", 0.7))
+        commission_percent = float(data.get("commission_percent", 2.0))
+        
+        annual_rate = data.get("annual_rate")
+        if annual_rate is not None:
+            annual_rate = float(annual_rate)
+            
+        months = data.get("months")
+        if months is not None:
+            months = int(months)
+
+        # 1. Parse down payment
+        amount, percent, is_sum = parse_down_payment(down_payment_text, price)
+
+        # 2. Compute bank months dynamically if not provided
+        if months is None and bank and model in CARS:
+            months_fn = CARS[model]["banks"][bank]
+            months = months_fn(percent, position)
+
+        is_simple = (bank == "Infinbank")
+
+        if is_simple:
+            # Infinbank simple result logic
+            down_payment = amount
+            down_percent = percent
+            loan_amount = price - down_payment
+            monthly_payment = loan_amount / months
+            final_total = down_payment + loan_amount
+            
+            result = {
+                "model": model,
+                "position": position,
+                "bank": bank,
+                "price": price,
+                "down_payment": down_payment,
+                "down_percent": down_percent,
+                "loan_amount": loan_amount,
+                "months": months,
+                "monthly_payment": monthly_payment,
+                "final_total": final_total,
+                "is_simple": True
+            }
+        else:
+            # Standard Kapitalbank, Cobalt, or Manual logic
+            years = math.ceil(months / 12)
+            
+            if is_sum:
+                raw_sum = amount
+                loan_amount_est = price - raw_sum
+                insurance_est = loan_amount_est * 1.25 * insurance_percent / 100 * years
+                commission_total = price * commission_percent / 100
+                net = raw_sum - insurance_est - commission_total
+                down_percent = round(net / price * 100)
+                down_payment = price * down_percent / 100
+                loan_amount = price - down_payment
+                insurance_total = loan_amount * 1.25 * insurance_percent / 100 * years
+            else:
+                down_payment = amount
+                down_percent = percent
+                loan_amount = price - down_payment
+                insurance_total = loan_amount * 1.25 * insurance_percent / 100 * years
+                commission_total = price * commission_percent / 100
+
+            if annual_rate:
+                monthly_payment = annuity_payment(loan_amount, annual_rate, months)
+            else:
+                monthly_payment = loan_amount / months
+
+            total_loan_payment = monthly_payment * months
+            overpayment = total_loan_payment - loan_amount
+
+            initial_total = down_payment + insurance_total + commission_total
+            final_total = down_payment + total_loan_payment
+
+            result = {
+                "model": model,
+                "position": position,
+                "bank": bank,
+                "price": price,
+                "down_payment": down_payment,
+                "down_percent": down_percent,
+                "loan_amount": loan_amount,
+                "months": months,
+                "annual_rate": annual_rate or 0,
+                "insurance_percent": insurance_percent,
+                "insurance_total": insurance_total,
+                "commission_percent": commission_percent,
+                "commission_total": commission_total,
+                "initial_total": initial_total,
+                "monthly_payment": monthly_payment,
+                "overpayment": overpayment,
+                "final_total": final_total,
+                "is_simple": False
+            }
+
+        return web.json_response(result)
+    except Exception as e:
+        return web.json_response({"detail": str(e)}, status=400)
+
+
+@routes.post('/api/schedule-image')
+async def api_schedule_image(request):
+    try:
+        data = await request.json()
+        model = data["model"]
+        position = data.get("position")
+        price = float(data["price"])
+        loan_amount = float(data["loan_amount"])
+        annual_rate = float(data.get("annual_rate", 0))
+        monthly_payment = float(data["monthly_payment"])
+        months = int(data["months"])
+
+        buf = generate_schedule_image(
+            model=model,
+            position=position,
+            price=price,
+            loan_amount=loan_amount,
+            annual_rate=annual_rate,
+            monthly_payment=monthly_payment,
+            months=months
+        )
+        return web.Response(body=buf.read(), content_type="image/png")
+    except Exception as e:
+        return web.json_response({"detail": str(e)}, status=400)
+
+
+@routes.post('/api/submit')
+async def api_submit(request):
+    try:
+        data = await request.json()
+        chat_id = int(data["chat_id"])
+        res = data["calculation"]
+
+        model = res["model"]
+        position = res.get("position")
+        bank = res.get("bank")
+        price = float(res["price"])
+        down_payment = float(res["down_payment"])
+        down_percent = float(res["down_percent"])
+        loan_amount = float(res["loan_amount"])
+        months = int(res["months"])
+        monthly_payment = float(res["monthly_payment"])
+        is_simple = res["is_simple"]
+
+        position_line = f" {position}" if position else ""
+        bank_line = f" ({bank})" if bank else ""
+
+        if is_simple:
+            final_total = float(res["final_total"])
+            text = (
+                f"📊 Yakuniy hisob-kitob{bank_line}\n"
+                f"━━━━━━━━━━━━━━━━━━\n"
+                f"🚗 {model}{position_line}\n"
+                f"💰 Narxi: {price:,.0f} so'm\n"
+                f"📅 Muddat: {months} oy\n\n"
+                f"💵 Boshlang'ich to'lov ({down_percent:.0f}%): {down_payment:,.0f} so'm\n"
+                f"📦 Kredit summasi: {loan_amount:,.0f} so'm\n"
+                f"💳 Oylik to'lov: {monthly_payment:,.0f} so'm\n\n"
+                f"🔚 YAKUNIY TO'LANADIGAN JAMI SUMMA: {final_total:,.0f} so'm\n\n"
+                f"Yana hisoblash uchun /start ni bosing."
+                f"{SIGNATURE}"
+            )
+        else:
+            annual_rate = float(res.get("annual_rate", 0))
+            insurance_percent = float(res["insurance_percent"])
+            insurance_total = float(res["insurance_total"])
+            commission_percent = float(res["commission_percent"])
+            commission_total = float(res["commission_total"])
+            initial_total = float(res["initial_total"])
+            final_total = float(res["final_total"])
+            overpayment = float(res.get("overpayment", 0))
+            years = math.ceil(months / 12)
+
+            rate_line = f"🏦 Yillik foiz: {annual_rate}%\n" if annual_rate else ""
+            overpay_line = f"📈 Foiz hisobiga ortiqcha to'lov: {overpayment:,.0f} so'm\n\n" if annual_rate else "\n"
+
+            text = (
+                f"📊 Yakuniy hisob-kitob{bank_line}\n"
+                f"━━━━━━━━━━━━━━━━━━\n"
+                f"🚗 {model}{position_line}\n"
+                f"💰 Narxi: {price:,.0f} so'm\n"
+                f"📅 Muddat: {months} oy\n"
+                f"{rate_line}\n"
+                f"💵 Boshlang'ich to'lov ({down_percent:.0f}%): {down_payment:,.0f} so'm\n"
+                f"🛡 Sug'urta ({insurance_percent}%/yil, {years} yil): {insurance_total:,.0f} so'm\n"
+                f"🏢 Komissiya ({commission_percent}%): {commission_total:,.0f} so'm\n"
+                f"➡️ Boshida to'lanadigan jami (xarajatlar bilan): {initial_total:,.0f} so'm\n\n"
+                f"📦 Kredit summasi: {loan_amount:,.0f} so'm\n"
+                f"💳 Oylik to'lov: {monthly_payment:,.0f} so'm\n"
+                f"{overpay_line}"
+                f"🔚 YAKUNIY TO'LANADIGAN JAMI SUMMA: {final_total:,.0f} so'm\n\n"
+                f"Yana hisoblash uchun /start ni bosing."
+                f"{SIGNATURE}"
+            )
+
+        keyboard = types.InlineKeyboardMarkup(
+            inline_keyboard=[[
+                types.InlineKeyboardButton(text="📷 To'liq jadval (rasm)", callback_data="show_schedule_img")
+            ]]
+        )
+
+        # Send formatted results text to Telegram Chat directly
+        await bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard)
+
+        # Set calculations state back in bot context so that existing callback queries work seamlessly!
+        state_ctx = dp.fsm.resolve_context(bot=bot, chat_id=chat_id, user_id=chat_id)
+        await state_ctx.update_data(
+            model=model,
+            position=position,
+            price=price,
+            loan_amount=loan_amount,
+            final_loan_amount=loan_amount,
+            final_annual_rate=res.get("annual_rate", 0),
+            final_monthly_payment=monthly_payment,
+            months=months
+        )
+
+        return web.json_response({"status": "success"})
+    except Exception as e:
+        return web.json_response({"detail": str(e)}, status=400)
+
+
+# ============================================================
+# WEBHOOK SOZLAMASI & MAIN LOOP
 # ============================================================
 
 async def on_startup(app: web.Application):
@@ -734,6 +1008,11 @@ async def on_startup(app: web.Application):
 
 def main():
     app = web.Application()
+    # Add Web App dynamic routing endpoints
+    app.add_routes(routes)
+    # Add Web App static folder serving route
+    app.router.add_static('/static/', path='/storage/emulated/0/Download/static', name='static')
+    
     SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path=WEBHOOK_PATH)
     setup_application(app, dp, bot=bot)
     app.on_startup.append(on_startup)
