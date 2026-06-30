@@ -21,12 +21,15 @@ PORT = int(os.environ.get("PORT", 10000))
 bot = Bot(token=TELEGRAM_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 
+DOWN_PERCENTS = [25, 30, 40, 50]
+
 
 # ============================================================
-# AVTOMOBIL KATALOGI
+# MUDDAT (OY) JADVALLARI - har bank, har model uchun
 # ============================================================
 
-def months_tracker(percent, position):
+# ---- KAPITALBANK ----
+def kb_months_tracker(percent, position):
     table = {25: 30, 30: 33, 50: 54}
     if percent in table:
         return table[percent]
@@ -35,13 +38,37 @@ def months_tracker(percent, position):
     return None
 
 
-def months_onix(percent, position=None):
+def kb_months_onix(percent, position=None):
     return {25: 30, 30: 33, 40: 41, 50: 54}.get(percent)
 
 
-def months_damas_labo(percent, position=None):
+def kb_months_damas_labo(percent, position=None):
     return {25: 12, 30: 15, 40: 19, 50: 26}.get(percent)
 
+
+# ---- INFINBANK ----
+def inf_months_tracker_onix(percent, position=None):
+    return {25: 36, 30: 40, 40: 52, 50: 60}.get(percent)
+
+
+def inf_months_damas(percent, position=None):
+    return {25: 14, 30: 17, 40: 21, 50: 28}.get(percent)
+
+
+def inf_months_labo(percent, position=None):
+    return {25: 12, 30: 14, 40: 18, 50: 23}.get(percent)
+
+
+def inf_months_captiva(percent, position=None):
+    return {25: 14, 30: 17, 40: 21, 50: 28}.get(percent)
+
+
+# ============================================================
+# AVTOMOBIL KATALOGI
+# ============================================================
+# Har bir model: positions (yoki price, agar pozitsiyasiz),
+# banks: {"Kapitalbank": months_fn yoki None, "Infinbank": months_fn yoki None}
+# "mode": "bank_choice" - bank tanlanadi, "credit_manual" - Cobalt kabi qo'lda
 
 CARS = {
     "TRACKER-2": {
@@ -51,8 +78,11 @@ CARS = {
             "PREMIER TURBO AT": 272_656_160,
             "REDLINE TURBO AT": 282_474_080,
         },
-        "mode": "rasrochka",
-        "months_fn": months_tracker,
+        "mode": "bank_choice",
+        "banks": {
+            "Kapitalbank": kb_months_tracker,
+            "Infinbank": inf_months_tracker_onix,
+        },
     },
     "ONIX": {
         "positions": {
@@ -61,27 +91,47 @@ CARS = {
             "PREMIER 2 TURBO AT": 221_640_160,
             "REDLINE TURBO AT": 230_474_000,
         },
-        "mode": "rasrochka",
-        "months_fn": months_onix,
+        "mode": "bank_choice",
+        "banks": {
+            "Kapitalbank": kb_months_onix,
+            "Infinbank": inf_months_tracker_onix,
+        },
+    },
+    "DAMAS": {
+        "positions": {
+            "STAYL": 96_932_000,
+            "VAN": 93_170_000,
+            "KOMBI": 96_449_000,
+        },
+        "mode": "bank_choice",
+        "banks": {
+            "Kapitalbank": kb_months_damas_labo,
+            "Infinbank": inf_months_damas,
+        },
+    },
+    "LABO": {
+        "price": 96_370_000,
+        "mode": "bank_choice",
+        "banks": {
+            "Kapitalbank": kb_months_damas_labo,
+            "Infinbank": inf_months_labo,
+        },
     },
     "COBALT": {
         "positions": {
             "Style MCM": 156_100_000,
             "Midnight MCM": 165_200_000,
         },
-        "mode": "credit",
+        "mode": "credit_manual",
     },
-    "DAMAS": {
-        "price": 96_932_000,
-        "months_fn": months_damas_labo,
-    },
-    "LABO": {
-        "price": 96_370_000,
-        "months_fn": months_damas_labo,
+    "CAPTIVA 5": {
+        "price": 349_900_000,
+        "mode": "bank_choice",
+        "banks": {
+            "Infinbank": inf_months_captiva,
+        },
     },
 }
-
-DOWN_PERCENTS = [25, 30, 40, 50]
 
 
 # ============================================================
@@ -93,7 +143,7 @@ def parse_number(text: str) -> float:
 
 
 def parse_down_payment(text: str, price: float):
-    """1-2 xonali son = foiz, 3+ xonali son = aniq summa (so'mda). is_sum - summa orqali kiritilganini bildiradi."""
+    """1-2 xonali son = foiz, 3+ xonali son = aniq summa (so'mda)."""
     value = parse_number(text)
     if value < 100:
         percent = value
@@ -190,6 +240,9 @@ def generate_schedule_image(model, position, price, loan_amount, annual_rate, mo
     return buf
 
 
+SIGNATURE = "\n\n━━━━━━━━━━━━━━━━━━\nMS AUTOCREDIT Sabrina\n+998908060889"
+
+
 # ============================================================
 # KLAVIATURALAR
 # ============================================================
@@ -200,32 +253,30 @@ def build_main_menu_kb():
     return types.InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def build_positions_kb(model):
-    rows = [
-        [types.InlineKeyboardButton(text=f"{pos} — {price:,.0f} so'm", callback_data=f"pos:{model}:{i}")]
-        for i, (pos, price) in enumerate(CARS[model]["positions"].items())
-    ]
+def build_bank_kb(model):
+    banks = CARS[model]["banks"]
+    rows = [[types.InlineKeyboardButton(text=bank, callback_data=f"bank:{model}:{bank}")] for bank in banks]
     rows.append([types.InlineKeyboardButton(text="⬅️ Orqaga", callback_data="back:main")])
     return types.InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def build_variant_kb(model):
+def build_positions_kb(model, bank):
     rows = [
-        [types.InlineKeyboardButton(text="📅 Rasrochka (foizsiz)", callback_data=f"variant:{model}:rasrochka")],
-        [types.InlineKeyboardButton(text="🏦 Kredit (foizli)", callback_data=f"variant:{model}:kredit")],
-        [types.InlineKeyboardButton(text="⬅️ Orqaga", callback_data="back:main")],
+        [types.InlineKeyboardButton(text=f"{pos} — {price:,.0f} so'm", callback_data=f"pos:{model}:{bank}:{i}")]
+        for i, (pos, price) in enumerate(CARS[model]["positions"].items())
     ]
+    rows.append([types.InlineKeyboardButton(text="⬅️ Orqaga", callback_data=f"back:bank:{model}")])
     return types.InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def build_percent_kb(model, back_data):
-    rows = [[types.InlineKeyboardButton(text=f"{p}%", callback_data=f"pct:{model}:{p}")] for p in DOWN_PERCENTS]
+def build_percent_kb(model, bank, back_data):
+    rows = [[types.InlineKeyboardButton(text=f"{p}%", callback_data=f"pct:{model}:{bank}:{p}")] for p in DOWN_PERCENTS]
     rows.append([types.InlineKeyboardButton(text="⬅️ Orqaga", callback_data=back_data)])
     return types.InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 # ============================================================
-# HOLATLAR (matn kutilayotgan bosqichlar)
+# HOLATLAR
 # ============================================================
 
 class Flow(StatesGroup):
@@ -266,92 +317,109 @@ async def back_main(callback: types.CallbackQuery, state: FSMContext):
 async def model_selected(callback: types.CallbackQuery, state: FSMContext):
     model = callback.data.split(":", 1)[1]
     info = CARS[model]
+    await state.update_data(model=model)
 
-    if "positions" in info:
-        await state.update_data(model=model)
+    if info["mode"] == "credit_manual":
         await callback.message.edit_text(
-            f"🚘 {model} uchun pozitsiyani tanlang:", reply_markup=build_positions_kb(model)
+            f"🚘 {model} uchun pozitsiyani tanlang:", reply_markup=build_positions_kb_credit(model)
         )
     else:
-        await state.update_data(model=model, price=info["price"], position=None)
-        await callback.message.edit_text(
-            f"🚐 {model}\n💰 Narxi: {info['price']:,.0f} so'm\n\nQaysi variantni tanlaysiz?",
-            reply_markup=build_variant_kb(model),
-        )
+        banks = info["banks"]
+        if len(banks) == 1:
+            # Faqat bitta bank mavjud (masalan Captiva -> Infinbank) - avtomatik tanlanadi
+            bank = list(banks.keys())[0]
+            await proceed_after_bank(callback, state, model, bank)
+        else:
+            await callback.message.edit_text(
+                f"🚘 {model}\n\n🏦 Bankni tanlang:", reply_markup=build_bank_kb(model)
+            )
     await callback.answer()
 
 
-@dp.callback_query(F.data.startswith("back:pos:"))
-async def back_to_positions(callback: types.CallbackQuery, state: FSMContext):
-    model = callback.data.split(":", 2)[2]
-    await callback.message.edit_text(
-        f"🚘 {model} uchun pozitsiyani tanlang:", reply_markup=build_positions_kb(model)
-    )
-    await callback.answer()
+def build_positions_kb_credit(model):
+    rows = [
+        [types.InlineKeyboardButton(text=f"{pos} — {price:,.0f} so'm", callback_data=f"poscredit:{model}:{i}")]
+        for i, (pos, price) in enumerate(CARS[model]["positions"].items())
+    ]
+    rows.append([types.InlineKeyboardButton(text="⬅️ Orqaga", callback_data="back:main")])
+    return types.InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-@dp.callback_query(F.data.startswith("back:variant:"))
-async def back_to_variant(callback: types.CallbackQuery, state: FSMContext):
-    model = callback.data.split(":", 2)[2]
-    info = CARS[model]
-    await callback.message.edit_text(
-        f"🚐 {model}\n💰 Narxi: {info['price']:,.0f} so'm\n\nQaysi variantni tanlaysiz?",
-        reply_markup=build_variant_kb(model),
-    )
-    await callback.answer()
-
-
-@dp.callback_query(F.data.startswith("pos:"))
-async def position_selected(callback: types.CallbackQuery, state: FSMContext):
+@dp.callback_query(F.data.startswith("poscredit:"))
+async def position_credit_selected(callback: types.CallbackQuery, state: FSMContext):
     _, model, idx = callback.data.split(":")
     idx = int(idx)
     positions = list(CARS[model]["positions"].items())
     position, price = positions[idx]
     await state.update_data(model=model, position=position, price=price)
 
-    if CARS[model]["mode"] == "credit":
-        await callback.message.edit_text(
-            f"✅ {model} {position}\n💰 Narxi: {price:,.0f} so'm\n\n"
-            f"🏦 Yillik foiz stavkasini kiriting (masalan: 26):"
-        )
-        await state.set_state(Flow.credit_rate)
-    else:
-        await callback.message.edit_text(
-            f"✅ {model} {position}\n💰 Narxi: {price:,.0f} so'm\n\nBoshlang'ich to'lov necha foiz bo'lsin?",
-            reply_markup=build_percent_kb(model, f"back:pos:{model}"),
-        )
+    await callback.message.edit_text(
+        f"✅ {model} {position}\n💰 Narxi: {price:,.0f} so'm\n\n"
+        f"🏦 Yillik foiz stavkasini kiriting (masalan: 26):"
+    )
+    await state.set_state(Flow.credit_rate)
     await callback.answer()
 
 
-@dp.callback_query(F.data.startswith("variant:"))
-async def variant_selected(callback: types.CallbackQuery, state: FSMContext):
-    _, model, choice = callback.data.split(":")
-    data = await state.get_data()
-    price = data["price"]
+@dp.callback_query(F.data.startswith("back:bank:"))
+async def back_to_bank(callback: types.CallbackQuery, state: FSMContext):
+    model = callback.data.split(":", 2)[2]
+    await callback.message.edit_text(
+        f"🚘 {model}\n\n🏦 Bankni tanlang:", reply_markup=build_bank_kb(model)
+    )
+    await callback.answer()
 
-    if choice == "kredit":
+
+@dp.callback_query(F.data.startswith("bank:"))
+async def bank_selected(callback: types.CallbackQuery, state: FSMContext):
+    _, model, bank = callback.data.split(":")
+    await proceed_after_bank(callback, state, model, bank)
+    await callback.answer()
+
+
+async def proceed_after_bank(callback, state, model, bank):
+    info = CARS[model]
+    await state.update_data(model=model, bank=bank)
+
+    if "positions" in info:
         await callback.message.edit_text(
-            f"✅ {model} (Kredit)\n💰 Narxi: {price:,.0f} so'm\n\n"
-            f"🏦 Yillik foiz stavkasini kiriting (masalan: 26):"
+            f"🚘 {model} ({bank}) uchun pozitsiyani tanlang:",
+            reply_markup=build_positions_kb(model, bank),
         )
-        await state.set_state(Flow.credit_rate)
     else:
+        price = info["price"]
+        await state.update_data(price=price, position=None)
         await callback.message.edit_text(
-            f"✅ {model} (Rasrochka)\n💰 Narxi: {price:,.0f} so'm\n\nBoshlang'ich to'lov necha foiz bo'lsin?",
-            reply_markup=build_percent_kb(model, f"back:variant:{model}"),
+            f"🚐 {model} ({bank})\n💰 Narxi: {price:,.0f} so'm\n\nBoshlang'ich to'lov necha foiz bo'lsin?",
+            reply_markup=build_percent_kb(model, bank, "back:main"),
         )
+
+
+@dp.callback_query(F.data.startswith("pos:"))
+async def position_selected(callback: types.CallbackQuery, state: FSMContext):
+    _, model, bank, idx = callback.data.split(":")
+    idx = int(idx)
+    positions = list(CARS[model]["positions"].items())
+    position, price = positions[idx]
+    await state.update_data(model=model, bank=bank, position=position, price=price)
+
+    await callback.message.edit_text(
+        f"✅ {model} {position} ({bank})\n💰 Narxi: {price:,.0f} so'm\n\nBoshlang'ich to'lov necha foiz bo'lsin?",
+        reply_markup=build_percent_kb(model, bank, f"back:bank:{model}"),
+    )
     await callback.answer()
 
 
 @dp.callback_query(F.data.startswith("pct:"))
 async def percent_selected(callback: types.CallbackQuery, state: FSMContext):
-    _, model, percent = callback.data.split(":")
+    _, model, bank, percent = callback.data.split(":")
     percent = int(percent)
     data = await state.get_data()
     price = data["price"]
     position = data.get("position")
 
-    months = CARS[model]["months_fn"](percent, position)
+    months_fn = CARS[model]["banks"][bank]
+    months = months_fn(percent, position)
     down_payment = price * percent / 100
     loan_amount = price - down_payment
     await state.update_data(
@@ -362,7 +430,6 @@ async def percent_selected(callback: types.CallbackQuery, state: FSMContext):
         f"✅ Boshlang'ich to'lov: {percent}% ({down_payment:,.0f} so'm)\n📅 Muddat: {months} oy"
     )
     await callback.answer()
-
     await callback.message.answer("🛡 Sug'urta necha foiz? (faqat raqam kiriting, masalan: 0.7)")
     await state.set_state(Flow.insurance)
 
@@ -436,7 +503,7 @@ async def manual_term_handler(message: types.Message, state: FSMContext):
 
 
 # ============================================================
-# KREDIT OQIMI (Cobalt va Damas/Labo - Kredit)
+# KREDIT OQIMI (Cobalt)
 # ============================================================
 
 @dp.message(Flow.credit_rate)
@@ -484,7 +551,57 @@ async def credit_down_handler(message: types.Message, state: FSMContext):
 
 
 # ============================================================
-# UMUMIY: SUG'URTA, KOMISSIYA, YAKUNIY HISOB-KITOB
+# INFINBANK UCHUN ODDIY NATIJA (sug'urta/komissiyasiz)
+# ============================================================
+
+async def show_simple_result(message_obj, state: FSMContext):
+    data = await state.get_data()
+    model = data["model"]
+    bank = data.get("bank", "")
+    position = data.get("position")
+    price = data["price"]
+    down_payment = data["down_payment"]
+    down_percent = data["down_percent"]
+    loan_amount = data["loan_amount"]
+    months = data["months"]
+
+    monthly_payment = loan_amount / months
+    final_total = down_payment + loan_amount  # foizsiz, xarajatlarsiz
+
+    await state.update_data(
+        final_monthly_payment=monthly_payment,
+        final_annual_rate=0,
+        final_loan_amount=loan_amount,
+        final_down_payment=down_payment,
+        final_down_percent=down_percent,
+    )
+
+    keyboard = types.InlineKeyboardMarkup(
+        inline_keyboard=[[
+            types.InlineKeyboardButton(text="📷 To'liq jadval (rasm)", callback_data="show_schedule_img")
+        ]]
+    )
+
+    position_line = f" {position}" if position else ""
+
+    await message_obj.answer(
+        f"📊 Yakuniy hisob-kitob ({bank})\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"🚗 {model}{position_line}\n"
+        f"💰 Narxi: {price:,.0f} so'm\n"
+        f"📅 Muddat: {months} oy\n\n"
+        f"💵 Boshlang'ich to'lov ({down_percent:.0f}%): {down_payment:,.0f} so'm\n"
+        f"📦 Kredit summasi: {loan_amount:,.0f} so'm\n"
+        f"💳 Oylik to'lov: {monthly_payment:,.0f} so'm\n\n"
+        f"🔚 YAKUNIY TO'LANADIGAN JAMI SUMMA: {final_total:,.0f} so'm\n\n"
+        f"Yana hisoblash uchun /start ni bosing."
+        f"{SIGNATURE}",
+        reply_markup=keyboard,
+    )
+
+
+# ============================================================
+# UMUMIY: SUG'URTA, KOMISSIYA, YAKUNIY HISOB-KITOB (Kapitalbank, Cobalt, Qo'lda)
 # ============================================================
 
 @dp.message(Flow.insurance)
@@ -509,6 +626,7 @@ async def commission_handler(message: types.Message, state: FSMContext):
 
     data = await state.get_data()
     model = data["model"]
+    bank = data.get("bank", "")
     position = data.get("position")
     price = data["price"]
     months = data["months"]
@@ -517,17 +635,14 @@ async def commission_handler(message: types.Message, state: FSMContext):
     years = math.ceil(months / 12)
 
     if data.get("down_is_sum"):
-        # Boshlang'ich to'lov SUMMADA kiritilgan - sug'urta va komissiya shu summadan
-        # ayirilib, qolgan qism narxga nisbatan TEKIS (butun) foizga moslanadi.
         raw_sum = data["down_payment"]
-        loan_amount_est = data["loan_amount"]  # price - raw_sum (dastlabki taxmin)
+        loan_amount_est = data["loan_amount"]
         insurance_est = loan_amount_est * 1.25 * insurance_percent / 100 * years
         commission_total = price * commission_percent / 100
         net = raw_sum - insurance_est - commission_total
         down_percent = round(net / price * 100)
         down_payment = price * down_percent / 100
         loan_amount = price - down_payment
-        # Yakuniy qarz qoldig'i asosida sug'urtani qayta hisoblaymiz (aniqroq bo'lishi uchun)
         insurance_total = loan_amount * 1.25 * insurance_percent / 100 * years
     else:
         down_payment = data["down_payment"]
@@ -545,7 +660,6 @@ async def commission_handler(message: types.Message, state: FSMContext):
     overpayment = total_loan_payment - loan_amount
 
     initial_total = down_payment + insurance_total + commission_total
-    # Yakuniy to'lanadigan jami summa - harajatlarsiz: qoldiq + boshlang'ich to'lov + foiz summasi
     final_total = down_payment + total_loan_payment
 
     await state.update_data(
@@ -564,11 +678,12 @@ async def commission_handler(message: types.Message, state: FSMContext):
     )
 
     position_line = f" {position}" if position else ""
+    bank_line = f" ({bank})" if bank else ""
     rate_line = f"🏦 Yillik foiz: {annual_rate}%\n" if annual_rate else ""
     overpay_line = f"📈 Foiz hisobiga ortiqcha to'lov: {overpayment:,.0f} so'm\n\n" if annual_rate else "\n"
 
     await message.answer(
-        f"📊 Yakuniy hisob-kitob\n"
+        f"📊 Yakuniy hisob-kitob{bank_line}\n"
         f"━━━━━━━━━━━━━━━━━━\n"
         f"🚗 {model}{position_line}\n"
         f"💰 Narxi: {price:,.0f} so'm\n"
@@ -582,10 +697,8 @@ async def commission_handler(message: types.Message, state: FSMContext):
         f"💳 Oylik to'lov: {monthly_payment:,.0f} so'm\n"
         f"{overpay_line}"
         f"🔚 YAKUNIY TO'LANADIGAN JAMI SUMMA: {final_total:,.0f} so'm\n\n"
-        f"Yana hisoblash uchun /start ni bosing.\n\n"
-        f"━━━━━━━━━━━━━━━━━━\n"
-        f"MS AUTOCREDIT Sabrina\n"
-        f"+998908060889",
+        f"Yana hisoblash uchun /start ni bosing."
+        f"{SIGNATURE}",
         reply_markup=keyboard,
     )
 
@@ -593,7 +706,7 @@ async def commission_handler(message: types.Message, state: FSMContext):
 @dp.callback_query(F.data == "show_schedule_img")
 async def show_schedule_img(callback: types.CallbackQuery, state: FSMContext):
     data = await state.get_data()
-    if "loan_amount" not in data:
+    if "final_loan_amount" not in data:
         await callback.answer("Avval /start orqali yangi hisoblash boshlang.", show_alert=True)
         return
     await callback.answer()
@@ -602,7 +715,7 @@ async def show_schedule_img(callback: types.CallbackQuery, state: FSMContext):
         model=data["model"],
         position=data.get("position"),
         price=data["price"],
-        loan_amount=data.get("final_loan_amount", data["loan_amount"]),
+        loan_amount=data["final_loan_amount"],
         annual_rate=data.get("final_annual_rate", 0),
         monthly_payment=data["final_monthly_payment"],
         months=data["months"],
