@@ -18,6 +18,9 @@ WEBHOOK_HOST = os.environ["WEBHOOK_HOST"]
 WEBHOOK_PATH = f"/webhook/{TELEGRAM_TOKEN}"
 PORT = int(os.environ.get("PORT", 10000))
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+WEB_DIR = os.path.join(BASE_DIR, "web")
+
 bot = Bot(token=TELEGRAM_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 
@@ -747,7 +750,7 @@ async def show_schedule_img(callback: types.CallbackQuery, state: FSMContext):
 
 @routes.get('/')
 async def serve_index(request):
-    return web.FileResponse('/storage/emulated/0/Download/static/index.html')
+    return web.FileResponse(os.path.join(WEB_DIR, "index.html"))
 
 
 @routes.get('/api/cars-config')
@@ -1011,7 +1014,7 @@ def main():
     # Add Web App dynamic routing endpoints
     app.add_routes(routes)
     # Add Web App static folder serving route
-    app.router.add_static('/static/', path='/storage/emulated/0/Download/static', name='static')
+    app.router.add_static('/static/', path=WEB_DIR, name='static')
     
     SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path=WEBHOOK_PATH)
     setup_application(app, dp, bot=bot)
