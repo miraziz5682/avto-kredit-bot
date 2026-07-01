@@ -332,8 +332,8 @@ function setupInputsScreen() {
             groupRate.style.display = 'none';
             groupTerm.style.display = 'none';
             
-                additionalExp.style.display = 'block';
-            }
+            additionalExp.style.display = 'block';
+            
             
             const modelInfo = appState.carsConfig[appState.selectedModel];
             if (modelInfo.positions) {
