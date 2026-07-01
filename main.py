@@ -799,7 +799,7 @@ async def api_calculate(request):
 
             calc_percent = percent
         if calc_percent is None:
-        calc_percent = amount / price * 100
+            calc_percent = amount / price * 100
     
             months = months_fn(percent, position)
 
