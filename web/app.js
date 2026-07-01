@@ -332,10 +332,6 @@ function setupInputsScreen() {
             groupRate.style.display = 'none';
             groupTerm.style.display = 'none';
             
-            if (appState.selectedBank === 'Infinbank') {
-                // Infinbank bypasses insurance & commission
-                additionalExp.style.display = 'none';
-            } else {
                 additionalExp.style.display = 'block';
             }
             
@@ -464,8 +460,8 @@ async function submitCalculation() {
         const insurance = document.getElementById('input-insurance').value;
         const commission = document.getElementById('input-commission').value;
         
-        payload.insurance_percent = insurance ? parseFloat(insurance) : 0.7;
-        payload.commission_percent = commission ? parseFloat(commission) : 2.0;
+        payload.insurance_percent = insurance ? parseFloat(insurance) : 0;
+        payload.commission_percent = commission ? parseFloat(commission) : 0;
     } else {
         payload.insurance_percent = 0;
         payload.commission_percent = 0;
