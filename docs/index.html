@@ -488,6 +488,19 @@ function fmt(n) {
   return Math.round(n).toLocaleString('uz-UZ') + " so'm";
 }
 
+ function formatMoneyInput(input) {
+  input.addEventListener("input", function () {
+    let value = this.value.replace(/\D/g, "");
+
+    if (!value) {
+      this.value = "";
+      return;
+    }
+
+    this.value = Number(value).toLocaleString("en-US");
+  });
+ }
+
 // ============================================================
 // EKRAN BOSHQARUVI
 // ============================================================
@@ -694,6 +707,9 @@ function showManualEntryScreen() {
     <button class="action-btn" onclick="calculateManual()">Hisoblash</button>
   `;
   showScreen(4);
+
+  formatMoneyInput(document.getElementById("manualPrice"));
+  formatMoneyInput(document.getElementById("manualDown"));
 }
 
 function calculateManual() {
@@ -748,6 +764,8 @@ function showManualCreditScreen() {
     <button class="action-btn" onclick="calculateCobalt()">Hisoblash</button>
   `;
   showScreen(4);
+
+  formatMoneyInput(document.getElementById("cobaltDown"));
 }
 
 // ============================================================
@@ -795,6 +813,7 @@ function showCustomPercentScreen() {
     <button class="action-btn" onclick="calculateCustomPercent()">Hisoblash</button>
   `;
   showScreen(4);
+  formatMoneyInput(document.getElementById("customDown"));
 }
 
 function calculateCustomPercent() {
