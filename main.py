@@ -796,6 +796,11 @@ async def api_calculate(request):
         # 2. Compute bank months dynamically if not provided
         if months is None and bank and model in CARS:
             months_fn = CARS[model]["banks"][bank]
+
+            calc_percent = percent
+        if calc_percent is None:
+        calc_percent = amount / price * 100
+    
             months = months_fn(percent, position)
 
         is_simple = (bank == "Infinbank")
