@@ -1,0 +1,1093 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MS Autocredit — Kalkulyator</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0f0f0f;
+    --surface: #1a1a1a;
+    --card: #222222;
+    --gold: #c9a84c;
+    --gold-light: #e8c97a;
+    --text: #f0f0f0;
+    --muted: #888;
+    --border: #333;
+    --danger: #e74c3c;
+    --success: #2ecc71;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 15px;
+    min-height: 100vh;
+    padding-bottom: 80px;
+  }
+
+  /* HEADER */
+  .header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .header-logo {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--gold);
+    letter-spacing: 0.5px;
+  }
+  .header-sub {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 1px;
+  }
+  .back-btn {
+    margin-left: auto;
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--gold);
+    padding: 5px 12px;
+    border-radius: 6px;
+    font-size: 13px;
+    cursor: pointer;
+    display: none;
+  }
+  .back-btn.visible { display: block; }
+
+  /* STEPS */
+  .step-bar {
+    display: flex;
+    gap: 4px;
+    padding: 12px 16px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+  }
+  .step-dot {
+    flex: 1;
+    height: 3px;
+    border-radius: 2px;
+    background: var(--border);
+    transition: background 0.3s;
+  }
+  .step-dot.done { background: var(--gold); }
+  .step-dot.active { background: var(--gold-light); }
+
+  /* SCREENS */
+  .screen { display: none; padding: 16px; }
+  .screen.active { display: block; }
+
+  .screen-title {
+    font-size: 13px;
+    color: var(--gold);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 6px;
+  }
+  .screen-sub {
+    font-size: 20px;
+    font-weight: 700;
+    margin-bottom: 18px;
+    line-height: 1.3;
+  }
+
+  /* OPTION CARDS */
+  .options { display: flex; flex-direction: column; gap: 8px; }
+  .option-card {
+    background: var(--card);
+    border: 1.5px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .option-card:active { background: #2a2a2a; }
+  .option-card.selected {
+    border-color: var(--gold);
+    background: #1e1a0f;
+  }
+  .option-name { font-weight: 600; font-size: 15px; }
+  .option-price { font-size: 13px; color: var(--gold); font-weight: 600; margin-top: 2px; }
+  .option-arrow { color: var(--muted); font-size: 18px; }
+
+  /* PERCENT GRID */
+  .pct-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .pct-card {
+    background: var(--card);
+    border: 1.5px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 12px;
+    cursor: pointer;
+    text-align: center;
+    transition: border-color 0.2s, background 0.2s;
+  }
+  .pct-card:active { background: #2a2a2a; }
+  .pct-card.selected { border-color: var(--gold); background: #1e1a0f; }
+  .pct-num { font-size: 26px; font-weight: 700; color: var(--gold); }
+  .pct-label { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .pct-months { font-size: 13px; color: var(--text); margin-top: 4px; font-weight: 600; }
+
+  /* INPUT */
+  .input-group { margin-bottom: 16px; }
+  .input-label {
+    font-size: 13px;
+    color: var(--muted);
+    margin-bottom: 6px;
+    display: block;
+  }
+  .input-field {
+    width: 100%;
+    background: var(--card);
+    border: 1.5px solid var(--border);
+    border-radius: 10px;
+    color: var(--text);
+    font-size: 16px;
+    padding: 13px 14px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .input-field:focus { border-color: var(--gold); }
+  .input-hint { font-size: 12px; color: var(--muted); margin-top: 5px; }
+
+  /* RESULT */
+  .result-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 12px;
+  }
+  .result-header {
+    background: linear-gradient(135deg, #1a1500, #2a2000);
+    border-bottom: 1px solid var(--gold);
+    padding: 14px 16px;
+  }
+  .result-model { font-size: 17px; font-weight: 700; }
+  .result-bank { font-size: 12px; color: var(--gold); margin-top: 2px; }
+
+  .result-rows { padding: 4px 0; }
+  .result-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 11px 16px;
+    border-bottom: 1px solid #2a2a2a;
+  }
+  .result-row:last-child { border-bottom: none; }
+  .result-row-label { color: var(--muted); font-size: 14px; }
+  .result-row-val { font-size: 14px; font-weight: 600; }
+  .result-row-val.gold { color: var(--gold); }
+
+  .result-total {
+    background: linear-gradient(135deg, #1a1200, #252000);
+    border: 1.5px solid var(--gold);
+    border-radius: 12px;
+    padding: 18px 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+  .result-total-label { font-size: 14px; color: var(--muted); }
+  .result-total-val { font-size: 22px; font-weight: 700; color: var(--gold-light); }
+
+  .signature {
+    text-align: center;
+    padding: 16px;
+    color: var(--muted);
+    font-size: 13px;
+    border-top: 1px solid var(--border);
+  }
+  .signature strong { color: var(--gold); display: block; font-size: 15px; margin-bottom: 3px; }
+
+  /* BUTTON */
+  .action-btn {
+    width: 100%;
+    background: var(--gold);
+    color: #000;
+    font-size: 16px;
+    font-weight: 700;
+    padding: 15px;
+    border: none;
+    border-radius: 12px;
+    cursor: pointer;
+    margin-top: 8px;
+    transition: background 0.2s;
+  }
+  .action-btn:active { background: var(--gold-light); }
+  .action-btn:disabled { background: var(--border); color: var(--muted); cursor: not-allowed; }
+
+  .secondary-btn {
+    width: 100%;
+    background: none;
+    color: var(--gold);
+    font-size: 15px;
+    font-weight: 600;
+    padding: 13px;
+    border: 1.5px solid var(--gold);
+    border-radius: 12px;
+    cursor: pointer;
+    margin-top: 8px;
+  }
+
+  /* SCHEDULE TABLE */
+  .schedule-wrap { overflow-x: auto; margin-top: 12px; }
+  .schedule-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+  .schedule-table th {
+    background: #2c3e50;
+    color: #fff;
+    padding: 8px 6px;
+    text-align: left;
+    white-space: nowrap;
+  }
+  .schedule-table td {
+    padding: 7px 6px;
+    border-bottom: 1px solid #2a2a2a;
+    white-space: nowrap;
+  }
+  .schedule-table tr:nth-child(even) td { background: #1e1e1e; }
+
+  .divider {
+    height: 1px;
+    background: var(--border);
+    margin: 16px 0;
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <div class="header-logo">MS AUTOCREDIT</div>
+    <div class="header-sub">Kredit kalkulyatori</div>
+  </div>
+  <button class="back-btn" id="backBtn" onclick="goBack()">⬅ Orqaga</button>
+</div>
+
+<div class="step-bar" id="stepBar">
+  <div class="step-dot" id="dot0"></div>
+  <div class="step-dot" id="dot1"></div>
+  <div class="step-dot" id="dot2"></div>
+  <div class="step-dot" id="dot3"></div>
+  <div class="step-dot" id="dot4"></div>
+  <div class="step-dot" id="dot5"></div>
+</div>
+
+<!-- SCREEN 0: MODEL -->
+<div class="screen active" id="screen0">
+  <div class="screen-title">1-qadam</div>
+  <div class="screen-sub">Avtomobil tanlang</div>
+  <div class="options" id="modelList"></div>
+</div>
+
+<!-- SCREEN 1: BANK -->
+<div class="screen" id="screen1">
+  <div class="screen-title">2-qadam</div>
+  <div class="screen-sub">Bankni tanlang</div>
+  <div class="options" id="bankList"></div>
+</div>
+
+<!-- SCREEN 2: POZITSIYA -->
+<div class="screen" id="screen2">
+  <div class="screen-title">3-qadam</div>
+  <div class="screen-sub">Pozitsiyani tanlang</div>
+  <div class="options" id="posList"></div>
+</div>
+
+<!-- SCREEN 3: FOIZ -->
+<div class="screen" id="screen3">
+  <div class="screen-title">4-qadam</div>
+  <div class="screen-sub">Boshlang'ich to'lov</div>
+  <div class="pct-grid" id="pctGrid"></div>
+  <button class="secondary-btn" onclick="showCustomPercentScreen()" style="margin-top:12px">✏️ Boshqa (o'zim kiritaman)</button>
+</div>
+
+<!-- SCREEN 4: SUG'URTA VA KOMISSIYA -->
+<div class="screen" id="screen4">
+  <div class="screen-title">5-qadam</div>
+  <div class="screen-sub">Qo'shimcha xarajatlar</div>
+  <div class="input-group">
+    <label class="input-label">🛡 Sug'urta (yillik foiz, %)</label>
+    <input class="input-field" type="number" id="insuranceInput" placeholder="masalan: 0.7" step="0.1" min="0">
+  </div>
+  <div class="input-group">
+    <label class="input-label">🏢 Firma komissiyasi (%)</label>
+    <input class="input-field" type="number" id="commissionInput" placeholder="masalan: 2" step="0.1" min="0">
+  </div>
+  <button class="action-btn" onclick="calculate()">Hisoblash</button>
+</div>
+
+<!-- SCREEN 5: NATIJA -->
+<div class="screen" id="screen5">
+  <div class="screen-title">Natija</div>
+  <div class="screen-sub">Hisob-kitob</div>
+  <div id="resultContent"></div>
+  <div id="scheduleSection" style="display:none">
+    <div class="divider"></div>
+    <div class="screen-title">To'lov jadvali</div>
+    <div class="schedule-wrap">
+      <table class="schedule-table" id="scheduleTable">
+        <thead>
+          <tr>
+            <th>Oy</th>
+            <th>To'lov</th>
+            <th>Asosiy qarz</th>
+            <th>Foiz</th>
+            <th>Qoldiq</th>
+          </tr>
+        </thead>
+        <tbody id="scheduleBody"></tbody>
+      </table>
+    </div>
+  </div>
+  <button class="secondary-btn" id="scheduleToggleBtn" onclick="toggleSchedule()">📋 To'lov jadvalini ko'rsatish</button>
+  <button class="action-btn" id="sendTgBtn" onclick="sendResultToTelegram()" style="margin-top:8px">📩 Telegram'ga yuborish</button>
+  <button class="secondary-btn" onclick="restart()" style="margin-top:8px">🔄 Qayta hisoblash</button>
+  <div class="signature">
+    <strong>MS AUTOCREDIT Sabrina</strong>
+    +998908060889
+  </div>
+</div>
+
+<script>
+// ============================================================
+// MA'LUMOTLAR
+// ============================================================
+
+function kbMonthsTracker(pct, pos) {
+  if (pct === 25) return 30;
+  if (pct === 30) return 33;
+  if (pct === 40) return pos === "LS PLUS AT" ? 44 : 41;
+  if (pct === 50) return 54;
+}
+function kbMonthsOnix(pct) {
+  return {25:30, 30:33, 40:41, 50:54}[pct];
+}
+function kbMonthsDamasLabo(pct) {
+  return {25:12, 30:15, 40:19, 50:26}[pct];
+}
+function infMonthsTrackerOnix(pct) {
+  return {25:36, 30:40, 40:52, 50:60}[pct];
+}
+function infMonthsDamas(pct) {
+  return {25:14, 30:17, 40:21, 50:28}[pct];
+}
+function infMonthsLabo(pct) {
+  return {25:12, 30:14, 40:18, 50:23}[pct];
+}
+function infMonthsCaptiva(pct) {
+  return {25:14, 30:17, 40:21, 50:28}[pct];
+}
+
+const CARS = {
+  "TRACKER-2": {
+    positions: {
+      "LS PLUS AT": 220951000,
+      "LTZ TURBO AT": 244108840,
+      "PREMIER TURBO AT": 272656160,
+      "REDLINE TURBO AT": 282474080,
+    },
+    banks: {
+      "Kapitalbank": kbMonthsTracker,
+      "Infinbank": infMonthsTrackerOnix,
+    }
+  },
+  "ONIX": {
+    positions: {
+      "3 LT MT": 184750000,
+      "LTZ TURBO AT": 199899000,
+      "PREMIER 2 TURBO AT": 221640160,
+      "REDLINE TURBO AT": 230474000,
+    },
+    banks: {
+      "Kapitalbank": kbMonthsOnix,
+      "Infinbank": infMonthsTrackerOnix,
+    }
+  },
+  "DAMAS": {
+    positions: {
+      "STAYL": 96932000,
+      "VAN": 93170000,
+      "KOMBI": 96449000,
+    },
+    banks: {
+      "Kapitalbank": kbMonthsDamasLabo,
+      "Infinbank": infMonthsDamas,
+    }
+  },
+  "LABO": {
+    price: 96370000,
+    banks: {
+      "Kapitalbank": kbMonthsDamasLabo,
+      "Infinbank": infMonthsLabo,
+    }
+  },
+  "COBALT": {
+    positions: {
+      "Style MCM": 156100000,
+      "Midnight MCM": 165200000,
+    },
+    manualCredit: true,
+  },
+  "CAPTIVA 5": {
+    price: 349900000,
+    banks: {
+      "Infinbank": infMonthsCaptiva,
+    }
+  },
+};
+
+const DOWN_PERCENTS = [25, 30, 40, 50];
+
+// ⚠️ MUHIM: Render'dagi botingiz manzilini shu yerga yozing (oxirida / bo'lmasin)
+// Masalan: "https://avtokredit-bot.onrender.com"
+const RENDER_API_URL = "https://SIZNING-BOT-MANZILINGIZ.onrender.com";
+
+function nearestTier(percent) {
+  const tiers = [...DOWN_PERCENTS].sort((a, b) => a - b);
+  let chosen = tiers[0];
+  for (const t of tiers) {
+    if (percent >= t) chosen = t;
+  }
+  return chosen;
+}
+
+// ============================================================
+// HOLAT
+// ============================================================
+
+let state = {};
+let history = [];
+let currentScreen = 0;
+let scheduleVisible = false;
+
+function fmt(n) {
+  return Math.round(n).toLocaleString('uz-UZ') + " so'm";
+}
+
+// Summa maydonlariga yozayotganda avtomatik "20 000 000" ko'rinishida bo'shliq qo'yadi
+function formatSumInput(el) {
+  const digits = el.value.replace(/\D/g, '');
+  el.value = digits ? Number(digits).toLocaleString('en-US').replace(/,/g, ' ') : '';
+}
+
+function readSumInput(id) {
+  const el = document.getElementById(id);
+  const cleaned = el.value.replace(/\s/g, '');
+  return parseFloat(cleaned) || 0;
+}
+
+// ============================================================
+// EKRAN BOSHQARUVI
+// ============================================================
+
+function showScreen(n) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById('screen' + n).classList.add('active');
+  currentScreen = n;
+  updateSteps(n);
+  document.getElementById('backBtn').classList.toggle('visible', n > 0);
+  window.scrollTo(0, 0);
+}
+
+function updateSteps(n) {
+  for (let i = 0; i < 6; i++) {
+    const dot = document.getElementById('dot' + i);
+    if (i < n) dot.className = 'step-dot done';
+    else if (i === n) dot.className = 'step-dot active';
+    else dot.className = 'step-dot';
+  }
+}
+
+function goBack() {
+  if (history.length > 0) {
+    const prev = history.pop();
+    state = { ...prev.state };
+    showScreen(prev.screen);
+    if (prev.screen === 1) renderBanks();
+    if (prev.screen === 2) renderPositions();
+    if (prev.screen === 3) renderPercents();
+  }
+}
+
+function pushHistory(screenNum) {
+  history.push({ screen: screenNum, state: { ...state } });
+}
+
+// ============================================================
+// 0 — MODEL
+// ============================================================
+
+function renderModels() {
+  const el = document.getElementById('modelList');
+  el.innerHTML = '';
+  Object.keys(CARS).forEach(model => {
+    const info = CARS[model];
+    const price = info.price || Object.values(info.positions || {})[0];
+    const div = document.createElement('div');
+    div.className = 'option-card';
+    div.innerHTML = `
+      <div>
+        <div class="option-name">${model}</div>
+        <div class="option-price">dan ${fmt(price)}</div>
+      </div>
+      <div class="option-arrow">›</div>`;
+    div.onclick = () => selectModel(model);
+    el.appendChild(div);
+  });
+  const manualDiv = document.createElement('div');
+  manualDiv.className = 'option-card';
+  manualDiv.innerHTML = `
+    <div>
+      <div class="option-name">✏️ Qo'lda kiritish</div>
+      <div class="option-price">Narx, foiz, muddat — o'zingiz</div>
+    </div>
+    <div class="option-arrow">›</div>`;
+  manualDiv.onclick = () => showManualEntryScreen();
+  el.appendChild(manualDiv);
+}
+
+function selectModel(model) {
+  pushHistory(0);
+  state.model = model;
+  const info = CARS[model];
+
+  if (info.manualCredit) {
+    // Cobalt: qo'lda kredit
+    renderPositions();
+    showScreen(2);
+    return;
+  }
+
+  const banks = Object.keys(info.banks);
+  if (banks.length === 1) {
+    state.bank = banks[0];
+    if (info.positions) {
+      renderPositions();
+      showScreen(2);
+    } else {
+      state.price = info.price;
+      state.position = null;
+      renderPercents();
+      showScreen(3);
+    }
+  } else {
+    renderBanks();
+    showScreen(1);
+  }
+}
+
+// ============================================================
+// 1 — BANK
+// ============================================================
+
+function renderBanks() {
+  const el = document.getElementById('bankList');
+  el.innerHTML = '';
+  const banks = Object.keys(CARS[state.model].banks);
+  banks.forEach(bank => {
+    const div = document.createElement('div');
+    div.className = 'option-card';
+    div.innerHTML = `<div class="option-name">🏦 ${bank}</div><div class="option-arrow">›</div>`;
+    div.onclick = () => selectBank(bank);
+    el.appendChild(div);
+  });
+}
+
+function selectBank(bank) {
+  pushHistory(1);
+  state.bank = bank;
+  const info = CARS[state.model];
+  if (info.positions) {
+    renderPositions();
+    showScreen(2);
+  } else {
+    state.price = info.price;
+    state.position = null;
+    renderPercents();
+    showScreen(3);
+  }
+}
+
+// ============================================================
+// 2 — POZITSIYA
+// ============================================================
+
+function renderPositions() {
+  const el = document.getElementById('posList');
+  el.innerHTML = '';
+  const positions = CARS[state.model].positions;
+  Object.entries(positions).forEach(([pos, price]) => {
+    const div = document.createElement('div');
+    div.className = 'option-card';
+    div.innerHTML = `
+      <div>
+        <div class="option-name">${pos}</div>
+        <div class="option-price">${fmt(price)}</div>
+      </div>
+      <div class="option-arrow">›</div>`;
+    div.onclick = () => selectPosition(pos, price);
+    el.appendChild(div);
+  });
+}
+
+function selectPosition(pos, price) {
+  pushHistory(2);
+  state.position = pos;
+  state.price = price;
+
+  if (CARS[state.model].manualCredit) {
+    // Cobalt: qo'lda kredit - skip to screen 4 bilan custom form
+    showManualCreditScreen();
+    return;
+  }
+  renderPercents();
+  showScreen(3);
+}
+
+// Umumiy "Qo'lda kiritish" (istalgan avtomobil uchun, narx ham qo'lda)
+function showManualEntryScreen() {
+  pushHistory(0);
+  state.model = "Qo'lda kiritilgan avtomobil";
+  state.position = null;
+  state.bank = "";
+  const s4 = document.getElementById('screen4');
+  s4.innerHTML = `
+    <div class="screen-title">Qo'lda kiritish</div>
+    <div class="screen-sub">Barcha ma'lumotni kiriting</div>
+    <div class="input-group">
+      <label class="input-label">🚗 Avtomobil narxi (so'mda)</label>
+      <input class="input-field" type="text" inputmode="numeric" id="manualPrice" placeholder="masalan: 200 000 000" oninput="formatSumInput(this)" min="0">
+    </div>
+    <div class="input-group">
+      <label class="input-label">💵 Boshlang'ich to'lov (foiz yoki so'm)</label>
+      <input class="input-field" type="text" inputmode="numeric" id="manualDown" placeholder="masalan: 30 yoki 50 000 000" oninput="formatSumInput(this)" min="0">
+      <div class="input-hint">2 xonali son = foiz (30%), ko'p xonali = aniq summa</div>
+    </div>
+    <div class="input-group">
+      <label class="input-label">🏦 Yillik foiz stavkasi (%)</label>
+      <input class="input-field" type="number" id="manualRate" placeholder="masalan: 26" step="0.1" min="0">
+    </div>
+    <div class="input-group">
+      <label class="input-label">📅 Muddat (oy)</label>
+      <input class="input-field" type="number" id="manualMonths" placeholder="masalan: 36" min="1">
+    </div>
+    <div class="input-group">
+      <label class="input-label">🛡 Sug'urta (yillik %)</label>
+      <input class="input-field" type="number" id="manualIns" placeholder="masalan: 0.7" step="0.1" min="0">
+    </div>
+    <div class="input-group">
+      <label class="input-label">🏢 Komissiya (%)</label>
+      <input class="input-field" type="number" id="manualComm" placeholder="masalan: 2" step="0.1" min="0">
+    </div>
+    <button class="action-btn" onclick="calculateManual()">Hisoblash</button>
+  `;
+  showScreen(4);
+}
+
+function calculateManual() {
+  const price = readSumInput('manualPrice');
+  const downRaw = readSumInput('manualDown');
+  const rate = parseFloat(document.getElementById('manualRate').value) || 0;
+  const months = parseInt(document.getElementById('manualMonths').value) || 0;
+  const ins = parseFloat(document.getElementById('manualIns').value) || 0;
+  const comm = parseFloat(document.getElementById('manualComm').value) || 0;
+
+  state.price = price;
+  let downPayment, downPercent;
+  if (downRaw < 100) {
+    downPercent = downRaw;
+    downPayment = price * downPercent / 100;
+  } else {
+    downPayment = downRaw;
+    downPercent = Math.round(downPayment / price * 100);
+  }
+  const loanAmount = price - downPayment;
+  state.months = months;
+  doCalculate(loanAmount, downPayment, downPercent, months, rate, ins, comm);
+}
+
+// Cobalt uchun maxsus qo'lda kiritish (screen 4 ni override qilish)
+function showManualCreditScreen() {
+  const s4 = document.getElementById('screen4');
+  s4.innerHTML = `
+    <div class="screen-title">Kredit ma'lumotlari</div>
+    <div class="screen-sub">Qo'lda kiriting</div>
+    <div class="input-group">
+      <label class="input-label">💵 Boshlang'ich to'lov (foiz yoki so'm)</label>
+      <input class="input-field" type="text" inputmode="numeric" id="cobaltDown" placeholder="masalan: 30 yoki 50 000 000" oninput="formatSumInput(this)" min="0">
+      <div class="input-hint">2 xonali son = foiz (30%), ko'p xonali = aniq summa</div>
+    </div>
+    <div class="input-group">
+      <label class="input-label">🏦 Yillik foiz stavkasi (%)</label>
+      <input class="input-field" type="number" id="cobaltRate" placeholder="masalan: 26" step="0.1" min="0">
+    </div>
+    <div class="input-group">
+      <label class="input-label">📅 Muddat (oy)</label>
+      <input class="input-field" type="number" id="cobaltMonths" placeholder="masalan: 36" min="1">
+    </div>
+    <div class="input-group">
+      <label class="input-label">🛡 Sug'urta (yillik %)</label>
+      <input class="input-field" type="number" id="cobaltIns" placeholder="masalan: 0.7" step="0.1" min="0">
+    </div>
+    <div class="input-group">
+      <label class="input-label">🏢 Komissiya (%)</label>
+      <input class="input-field" type="number" id="cobaltComm" placeholder="masalan: 2" step="0.1" min="0">
+    </div>
+    <button class="action-btn" onclick="calculateCobalt()">Hisoblash</button>
+  `;
+  showScreen(4);
+}
+
+// ============================================================
+// 3 — FOIZ
+// ============================================================
+
+function renderPercents() {
+  const el = document.getElementById('pctGrid');
+  el.innerHTML = '';
+  const monthsFn = CARS[state.model].banks[state.bank];
+  DOWN_PERCENTS.forEach(pct => {
+    const months = monthsFn(pct, state.position);
+    const downAmt = state.price * pct / 100;
+    const div = document.createElement('div');
+    div.className = 'pct-card';
+    div.innerHTML = `
+      <div class="pct-num">${pct}%</div>
+      <div class="pct-label">${fmt(downAmt)}</div>
+      <div class="pct-months">${months} oy</div>`;
+    div.onclick = () => selectPercent(pct, months, downAmt);
+    el.appendChild(div);
+  });
+}
+
+// "Boshqa" - erkin foiz/summa kiritish (tier bo'yicha muddat aniqlanadi)
+function showCustomPercentScreen() {
+  pushHistory(3);
+  const s4 = document.getElementById('screen4');
+  s4.innerHTML = `
+    <div class="screen-title">Boshlang'ich to'lov</div>
+    <div class="screen-sub">O'zingiz kiriting</div>
+    <div class="input-group">
+      <label class="input-label">💵 Boshlang'ich to'lov (foiz yoki so'm)</label>
+      <input class="input-field" type="text" inputmode="numeric" id="customDown" placeholder="masalan: 35 yoki 70 000 000" oninput="formatSumInput(this)" min="0">
+      <div class="input-hint">2 xonali son = foiz, ko'p xonali = aniq summa. Muddat mos oraliqqa qarab aniqlanadi.</div>
+    </div>
+    <div class="input-group">
+      <label class="input-label">🛡 Sug'urta (yillik %)</label>
+      <input class="input-field" type="number" id="customIns" placeholder="masalan: 0.7" step="0.1" min="0">
+    </div>
+    <div class="input-group">
+      <label class="input-label">🏢 Komissiya (%)</label>
+      <input class="input-field" type="number" id="customComm" placeholder="masalan: 2" step="0.1" min="0">
+    </div>
+    <button class="action-btn" onclick="calculateCustomPercent()">Hisoblash</button>
+  `;
+  showScreen(4);
+}
+
+function calculateCustomPercent() {
+  const downRaw = readSumInput('customDown');
+  const ins = parseFloat(document.getElementById('customIns').value) || 0;
+  const comm = parseFloat(document.getElementById('customComm').value) || 0;
+  const price = state.price;
+  const monthsFn = CARS[state.model].banks[state.bank];
+
+  let downPercent;
+  if (downRaw < 100) {
+    // Foiz sifatida kiritilgan
+    downPercent = downRaw;
+  } else {
+    // Summa sifatida kiritilgan - sug'urta/komissiyani ayirib, tekis foizga moslaymiz
+    const rawPercentGuess = downRaw / price * 100;
+    const tierGuess = nearestTier(rawPercentGuess);
+    const monthsGuess = monthsFn(tierGuess, state.position) || 12;
+    const yearsGuess = Math.ceil(monthsGuess / 12);
+    const loanEst = price - downRaw;
+    const insuranceEst = loanEst * 1.25 * ins / 100 * yearsGuess;
+    const commissionTotal = price * comm / 100;
+    const net = downRaw - insuranceEst - commissionTotal;
+    downPercent = Math.round(net / price * 100);
+  }
+
+  const tier = nearestTier(downPercent);
+  const months = monthsFn(tier, state.position) || 12;
+  const downPayment = price * downPercent / 100;
+  const loanAmount = price - downPayment;
+
+  state.months = months;
+  doCalculate(loanAmount, downPayment, downPercent, months, 0, ins, comm);
+}
+
+function selectPercent(pct, months, downAmt) {
+  pushHistory(3);
+  state.downPercent = pct;
+  state.months = months;
+  state.downPayment = downAmt;
+  state.loanAmount = state.price - downAmt;
+
+  // Screen 4 ni standart ko'rinishga qaytarish (Cobalt dan keyin kelishi mumkin)
+  const s4 = document.getElementById('screen4');
+  s4.innerHTML = `
+    <div class="screen-title">5-qadam</div>
+    <div class="screen-sub">Qo'shimcha xarajatlar</div>
+    <div class="input-group">
+      <label class="input-label">🛡 Sug'urta (yillik foiz, %)</label>
+      <input class="input-field" type="number" id="insuranceInput" placeholder="masalan: 0.7" step="0.1" min="0">
+    </div>
+    <div class="input-group">
+      <label class="input-label">🏢 Firma komissiyasi (%)</label>
+      <input class="input-field" type="number" id="commissionInput" placeholder="masalan: 2" step="0.1" min="0">
+    </div>
+    <button class="action-btn" onclick="calculate()">Hisoblash</button>
+  `;
+  showScreen(4);
+}
+
+// ============================================================
+// HISOBLASH
+// ============================================================
+
+function annuity(loan, rate, months) {
+  const mr = rate / 12 / 100;
+  if (mr === 0) return loan / months;
+  return (loan * mr * Math.pow(1 + mr, months)) / (Math.pow(1 + mr, months) - 1);
+}
+
+function calculate() {
+  const ins = parseFloat(document.getElementById('insuranceInput').value) || 0;
+  const comm = parseFloat(document.getElementById('commissionInput').value) || 0;
+  doCalculate(state.loanAmount, state.downPayment, state.downPercent, state.months, 0, ins, comm);
+}
+
+function calculateCobalt() {
+  const downRaw = readSumInput('cobaltDown');
+  const rate = parseFloat(document.getElementById('cobaltRate').value) || 0;
+  const months = parseInt(document.getElementById('cobaltMonths').value) || 0;
+  const ins = parseFloat(document.getElementById('cobaltIns').value) || 0;
+  const comm = parseFloat(document.getElementById('cobaltComm').value) || 0;
+
+  let downPayment, downPercent;
+  if (downRaw < 100) {
+    downPercent = downRaw;
+    downPayment = state.price * downPercent / 100;
+  } else {
+    downPayment = downRaw;
+    downPercent = Math.round(downPayment / state.price * 100);
+  }
+  const loanAmount = state.price - downPayment;
+  state.months = months;
+  doCalculate(loanAmount, downPayment, downPercent, months, rate, ins, comm);
+}
+
+function doCalculate(loanAmount, downPayment, downPercent, months, annualRate, insurancePct, commissionPct) {
+  const years = Math.ceil(months / 12);
+  const insuranceTotal = loanAmount * 1.25 * insurancePct / 100 * years;
+  const commissionTotal = state.price * commissionPct / 100;
+  const initialTotal = downPayment + insuranceTotal + commissionTotal;
+
+  let monthlyPayment;
+  if (annualRate > 0) {
+    monthlyPayment = annuity(loanAmount, annualRate, months);
+  } else {
+    monthlyPayment = loanAmount / months;
+  }
+
+  const totalLoan = monthlyPayment * months;
+  const overpayment = totalLoan - loanAmount;
+  const finalTotal = downPayment + totalLoan;
+
+  state.result = { loanAmount, downPayment, downPercent, months, annualRate, insurancePct, commissionPct, insuranceTotal, commissionTotal, initialTotal, monthlyPayment, totalLoan, overpayment, finalTotal, years };
+
+  renderResult();
+  showScreen(5);
+}
+
+// ============================================================
+// NATIJA
+// ============================================================
+
+function renderResult() {
+  const r = state.result;
+  const model = state.model;
+  const pos = state.position ? ` ${state.position}` : '';
+  const bank = state.bank ? ` • ${state.bank}` : '';
+
+  let rows = `
+    <div class="result-row"><span class="result-row-label">Narxi</span><span class="result-row-val">${fmt(state.price)}</span></div>
+    <div class="result-row"><span class="result-row-label">Muddat</span><span class="result-row-val">${r.months} oy</span></div>
+    ${r.annualRate ? `<div class="result-row"><span class="result-row-label">Yillik foiz</span><span class="result-row-val gold">${r.annualRate}%</span></div>` : ''}
+    <div class="result-row"><span class="result-row-label">Boshlang'ich to'lov (${r.downPercent}%)</span><span class="result-row-val">${fmt(r.downPayment)}</span></div>
+    <div class="result-row"><span class="result-row-label">Sug'urta (${r.insurancePct}%/yil, ${r.years} yil)</span><span class="result-row-val">${fmt(r.insuranceTotal)}</span></div>
+    <div class="result-row"><span class="result-row-label">Komissiya (${r.commissionPct}%)</span><span class="result-row-val">${fmt(r.commissionTotal)}</span></div>
+    <div class="result-row"><span class="result-row-label">Boshida to'lanadigan jami</span><span class="result-row-val gold">${fmt(r.initialTotal)}</span></div>
+    <div class="result-row"><span class="result-row-label">Kredit summasi</span><span class="result-row-val">${fmt(r.loanAmount)}</span></div>
+    <div class="result-row"><span class="result-row-label">Oylik to'lov</span><span class="result-row-val gold">${fmt(r.monthlyPayment)}</span></div>
+    ${r.annualRate ? `<div class="result-row"><span class="result-row-label">Foiz hisobiga ortiqcha</span><span class="result-row-val">${fmt(r.overpayment)}</span></div>` : ''}
+  `;
+
+  document.getElementById('resultContent').innerHTML = `
+    <div class="result-card">
+      <div class="result-header">
+        <div class="result-model">${model}${pos}</div>
+        <div class="result-bank">${bank}</div>
+      </div>
+      <div class="result-rows">${rows}</div>
+    </div>
+    <div class="result-total">
+      <div>
+        <div class="result-total-label">Yakuniy to'lanadigan jami</div>
+        <div style="font-size:11px;color:#666;margin-top:2px">qoldiq + boshlang'ich + foiz</div>
+      </div>
+      <div class="result-total-val">${fmt(r.finalTotal)}</div>
+    </div>
+  `;
+
+  renderSchedule();
+}
+
+function renderSchedule() {
+  const r = state.result;
+  const tbody = document.getElementById('scheduleBody');
+  tbody.innerHTML = '';
+  const mr = r.annualRate ? r.annualRate / 12 / 100 : 0;
+  let balance = r.loanAmount;
+
+  for (let m = 1; m <= r.months; m++) {
+    const interest = mr > 0 ? balance * mr : 0;
+    const principal = r.monthlyPayment - interest;
+    balance -= principal;
+    if (m === r.months) balance = 0;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${m}</td>
+      <td>${Math.round(r.monthlyPayment).toLocaleString()}</td>
+      <td>${Math.round(principal).toLocaleString()}</td>
+      <td>${Math.round(interest).toLocaleString()}</td>
+      <td>${Math.round(Math.max(balance, 0)).toLocaleString()}</td>`;
+    tbody.appendChild(tr);
+  }
+}
+
+function fmtText(n) {
+  return Math.round(n).toLocaleString('uz-UZ') + " so'm";
+}
+
+function buildResultText() {
+  const r = state.result;
+  const model = state.model;
+  const pos = state.position ? ` ${state.position}` : '';
+  const bank = state.bank ? ` (${state.bank})` : '';
+
+  let text = `📊 Yakuniy hisob-kitob${bank}\n`;
+  text += `━━━━━━━━━━━━━━━━━━\n`;
+  text += `🚗 ${model}${pos}\n`;
+  text += `💰 Narxi: ${fmtText(state.price)}\n`;
+  text += `📅 Muddat: ${r.months} oy\n`;
+  if (r.annualRate) text += `🏦 Yillik foiz: ${r.annualRate}%\n`;
+  text += `\n💵 Boshlang'ich to'lov (${r.downPercent}%): ${fmtText(r.downPayment)}\n`;
+  text += `🛡 Sug'urta (${r.insurancePct}%/yil, ${r.years} yil): ${fmtText(r.insuranceTotal)}\n`;
+  text += `🏢 Komissiya (${r.commissionPct}%): ${fmtText(r.commissionTotal)}\n`;
+  text += `➡️ Boshida to'lanadigan jami: ${fmtText(r.initialTotal)}\n\n`;
+  text += `📦 Kredit summasi: ${fmtText(r.loanAmount)}\n`;
+  text += `💳 Oylik to'lov: ${fmtText(r.monthlyPayment)}\n`;
+  if (r.annualRate) text += `📈 Foiz hisobiga ortiqcha: ${fmtText(r.overpayment)}\n`;
+  text += `\n🔚 YAKUNIY TO'LANADIGAN JAMI SUMMA: ${fmtText(r.finalTotal)}\n\n`;
+  text += `━━━━━━━━━━━━━━━━━━\nMS AUTOCREDIT Sabrina\n+998908060889`;
+  return text;
+}
+
+async function sendResultToTelegram() {
+  const btn = document.getElementById('sendTgBtn');
+  const tg = window.Telegram ? window.Telegram.WebApp : null;
+  const user = tg && tg.initDataUnsafe && tg.initDataUnsafe.user;
+
+  if (!user || !user.id) {
+    alert("Xatolik: foydalanuvchi aniqlanmadi. Botni Telegram ichida oching.");
+    return;
+  }
+  if (RENDER_API_URL.includes("SIZNING-BOT-MANZILINGIZ")) {
+    alert("Sozlanmagan: kod ichidagi RENDER_API_URL manzilini to'ldiring.");
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = "Yuborilmoqda...";
+
+  try {
+    const res = await fetch(RENDER_API_URL + "/api/send-result", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: user.id, text: buildResultText() }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      btn.textContent = "✅ Yuborildi!";
+      if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
+    } else {
+      throw new Error(data.error || "Noma'lum xatolik");
+    }
+  } catch (e) {
+    alert("Yuborishda xatolik: " + e.message);
+    btn.disabled = false;
+    btn.textContent = "📩 Telegram'ga yuborish";
+  }
+}
+
+function toggleSchedule() {
+  scheduleVisible = !scheduleVisible;
+  document.getElementById('scheduleSection').style.display = scheduleVisible ? 'block' : 'none';
+  document.getElementById('scheduleToggleBtn').textContent = scheduleVisible
+    ? '📋 Jadvalni yopish'
+    : '📋 To\'lov jadvalini ko\'rsatish';
+}
+
+function restart() {
+  state = {};
+  history = [];
+  scheduleVisible = false;
+  document.getElementById('scheduleSection').style.display = 'none';
+  const btn = document.getElementById('sendTgBtn');
+  btn.disabled = false;
+  btn.textContent = "📩 Telegram'ga yuborish";
+  renderModels();
+  showScreen(0);
+}
+
+// ============================================================
+// ISHGA TUSHIRISH
+// ============================================================
+try {
+  const tg = window.Telegram.WebApp;
+  tg.ready();
+  tg.expand();
+  tg.setHeaderColor('#0f0f0f');
+} catch(e) {}
+
+renderModels();
+</script>
+</body>
+</html>
