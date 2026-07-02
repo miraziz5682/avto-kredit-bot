@@ -468,6 +468,14 @@ async def custom_down_handler(message: types.Message, state: FSMContext):
     except ValueError:
         await message.answer("Iltimos, faqat raqam kiriting.")
         return
+
+    if not is_sum and (percent < 25 or percent > 100):
+        await message.answer(
+            "❌ Boshlang'ich to'lov kamida 25%, ko'pi bilan 100% bo'lishi kerak.\n"
+            "Iltimos, qaytadan kiriting:"
+        )
+        return
+
     await state.update_data(
         down_payment=amount, down_percent=percent, down_is_sum=is_sum, custom_entry=True
     )
@@ -691,6 +699,15 @@ async def commission_handler(message: types.Message, state: FSMContext):
         else:
             down_percent = round(data["down_percent"])
             commission_total = price * commission_percent / 100
+
+        if down_percent < 25 or down_percent > 100:
+            await message.answer(
+                f"❌ Xarajatlar ayirilgandan keyin boshlang'ich to'lov {down_percent}% chiqdi.\n"
+                f"Bu kamida 25%, ko'pi bilan 100% bo'lishi kerak.\n\n"
+                f"Iltimos, boshlang'ich to'lov summasini/foizini qaytadan kiriting:"
+            )
+            await state.set_state(Flow.custom_down)
+            return
 
         tier = nearest_tier(down_percent)
         months = months_fn(tier, position) or 12
